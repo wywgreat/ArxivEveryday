@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_DIR="/opt/ArxivEveryday"
+
+cd "${APP_DIR}"
+git pull --ff-only origin main
+sudo systemctl restart arxiv-everyday.service
+sudo systemctl status arxiv-everyday.service --no-pager
+curl http://127.0.0.1:8000/health

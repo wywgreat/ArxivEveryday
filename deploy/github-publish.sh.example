@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: bash deploy/github-publish.sh.example <github_repo_url>"
+  echo "Example: bash deploy/github-publish.sh.example https://github.com/yourname/ArxivEveryday.git"
+  exit 1
+fi
+
+REPO_URL="$1"
+
+git add .
+
+if git diff --cached --quiet; then
+  echo "No staged changes to commit."
+else
+  git commit -m "feat: initial arxiv everyday app"
+fi
+
+if git remote get-url origin >/dev/null 2>&1; then
+  git remote set-url origin "${REPO_URL}"
+else
+  git remote add origin "${REPO_URL}"
+fi
+
+git branch -M main
+git push -u origin main
+
+echo "GitHub remote has been configured and pushed to ${REPO_URL}"

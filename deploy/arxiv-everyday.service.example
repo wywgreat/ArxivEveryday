@@ -1,0 +1,14 @@
+[Unit]
+Description=Arxiv Everyday Web App
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ArxivEveryday
+ExecStart=/usr/bin/python3 /opt/ArxivEveryday/server.py
+Restart=always
+RestartSec=3
+EnvironmentFile=/opt/ArxivEveryday/deploy/arxiv-everyday.env
+
+[Install]
+WantedBy=multi-user.target

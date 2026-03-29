@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arxiv Everyday | 论文看板</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/app.js"></script>
+  </head>
+  <body class="dashboard-body">
+    <div class="page-glow page-glow-left"></div>
+    <div class="page-glow page-glow-right"></div>
+
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark">AE</div>
+        <div>
+          <p class="eyebrow">Arxiv Everyday</p>
+          <h1>AI 论文追踪面板</h1>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <span id="userBadge" class="user-badge">admin123</span>
+        <button id="logoutButton" class="secondary-button" type="button">退出登录</button>
+      </div>
+    </header>
+
+    <main class="dashboard-shell">
+      <section class="hero-card">
+        <div>
+          <p class="eyebrow">Paper Monitor</p>
+          <h2>按主题筛 arXiv，新论文打开就能看。</h2>
+          <p class="hero-copy">
+            覆盖大语言模型、智能体、推理、世界模型、具身智能、多模态、代码生成、训练优化、推理优化、AI 安全与扩展泛化等主题。
+          </p>
+        </div>
+
+        <div class="hero-note">
+          <strong>本地测试提示</strong>
+          <p>如果当前环境无法访问外网，系统会自动回退到缓存或内置演示数据，但登录、收藏和页面交互都可以正常验证。</p>
+        </div>
+      </section>
+
+      <section class="control-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Query Window</p>
+            <h3>选择时间窗口并立即更新</h3>
+          </div>
+          <p class="section-tip">首次翻译可能稍慢，后续会复用本地缓存。</p>
+        </div>
+
+        <form id="windowForm" class="window-form">
+          <label class="field compact">
+            <span>时间窗口</span>
+            <select id="windowSelect" name="window">
+              <option value="1d">最近 1 天</option>
+              <option value="3d">最近 3 天</option>
+              <option value="7d" selected>最近 7 天</option>
+              <option value="14d">最近 14 天</option>
+              <option value="30d">最近 30 天</option>
+              <option value="custom">自定义日期</option>
+            </select>
+          </label>
+
+          <label id="startDateField" class="field compact hidden">
+            <span>开始日期</span>
+            <input id="startDate" name="startDate" type="date" />
+          </label>
+
+          <label id="endDateField" class="field compact hidden">
+            <span>结束日期</span>
+            <input id="endDate" name="endDate" type="date" />
+          </label>
+
+          <button id="refreshButton" type="submit" class="primary-button">立即更新</button>
+        </form>
+      </section>
+
+      <section id="banner" class="banner hidden"></section>
+
+      <section class="stats-grid">
+        <article class="stat-card">
+          <span class="stat-label">当前结果</span>
+          <strong id="paperCount">0</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">我的收藏</span>
+          <strong id="favoriteCount">0</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">数据来源</span>
+          <strong id="sourceLabel">未加载</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">当前时间窗</span>
+          <strong id="windowLabel">最近 7 天</strong>
+        </article>
+      </section>
+
+      <section class="topic-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Tracked Topics</p>
+            <h3>当前覆盖主题</h3>
+          </div>
+        </div>
+        <div id="topicCloud" class="topic-cloud"></div>
+      </section>
+
+      <section class="list-card">
+        <div class="list-toolbar">
+          <div class="tab-group">
+            <button id="allTab" type="button" class="tab-button active">全部论文</button>
+            <button id="favoriteTab" type="button" class="tab-button">我的收藏</button>
+          </div>
+          <p id="listHint" class="list-hint">点击卡片右上角即可收藏 / 取消收藏。</p>
+        </div>
+
+        <div id="loadingState" class="loading-state hidden">
+          <div class="spinner"></div>
+          <p>正在拉取论文并生成翻译，请稍候…</p>
+        </div>
+
+        <div id="emptyState" class="empty-state hidden">
+          <h4>当前没有可展示的论文</h4>
+          <p>你可以调整时间窗口后重新刷新，或者先查看“我的收藏”。</p>
+        </div>
+
+        <div id="paperGrid" class="paper-grid"></div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: bash deploy/ecs-first-deploy.sh.example <github_repo_url> [domain]"
+  echo "Example: bash deploy/ecs-first-deploy.sh.example https://github.com/yourname/ArxivEveryday.git papers.example.com"
+  exit 1
+fi
+
+REPO_URL="$1"
+DOMAIN="${2:-_}"
+APP_DIR="/opt/ArxivEveryday"
+
+sudo apt update
+sudo apt install -y python3 git nginx
+
+if [[ -d "${APP_DIR}/.git" ]]; then
+  echo "${APP_DIR} already exists. Skipping clone."
+else
+  sudo git clone "${REPO_URL}" "${APP_DIR}"
+fi
+
+cd "${APP_DIR}"
+
+if [[ ! -f deploy/arxiv-everyday.env ]]; then
+  sudo cp deploy/arxiv-everyday.env.example deploy/arxiv-everyday.env
+  echo "Created deploy/arxiv-everyday.env. Edit ADMIN_PASSWORD before public launch."
+fi
+
+sudo cp deploy/arxiv-everyday.service.example /etc/systemd/system/arxiv-everyday.service
+sudo systemctl daemon-reload
+sudo systemctl enable arxiv-everyday.service
+sudo systemctl restart arxiv-everyday.service
+
+sudo sed "s/server_name _;/server_name ${DOMAIN};/" deploy/nginx.arxiv-everyday.conf | sudo tee /etc/nginx/sites-available/arxiv-everyday >/dev/null
+sudo ln -sf /etc/nginx/sites-available/arxiv-everyday /etc/nginx/sites-enabled/arxiv-everyday
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl enable nginx
+sudo systemctl restart nginx
+
+echo "Deployment finished."
+echo "Health check: curl http://127.0.0.1:8000/health"
+echo "Public URL: http://${DOMAIN}"
