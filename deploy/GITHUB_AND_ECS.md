@@ -42,12 +42,13 @@ ssh root@<你的 ECS 公网 IP>
 然后执行：
 
 ```bash
-sudo apt update
-sudo apt install -y python3 git nginx
+sudo yum makecache
+sudo yum install -y python3.11 git nginx
 sudo mkdir -p /opt
 cd /opt
 sudo git clone https://github.com/<你的 GitHub 用户名>/ArxivEveryday.git ArxivEveryday
 cd /opt/ArxivEveryday
+sudo python3.11 -m venv .venv
 sudo cp deploy/arxiv-everyday.env.example deploy/arxiv-everyday.env
 sudo cp deploy/arxiv-everyday.service.example /etc/systemd/system/arxiv-everyday.service
 sudo systemctl daemon-reload
@@ -101,6 +102,7 @@ bash deploy/ecs-update.sh.example
 
 ## 5. 公网前建议
 
+- Alibaba Cloud Linux 3.2104 默认 `python3` 是 `Python 3.6`，而本项目部署时应使用 `Python 3.11`。
 - 编辑 `/opt/ArxivEveryday/deploy/arxiv-everyday.env`，把 `ADMIN_PASSWORD` 改成强密码。
 - 在阿里云安全组中放行 `80` 端口；如果后续上 HTTPS，再放行 `443`。
 - 如果你有域名，建议后续补一个 HTTPS 证书。

@@ -34,6 +34,10 @@ python3 server.py
 - `ARXIV_PAGE_SIZE`
 - `ARXIV_FETCH_CAP`
 
+## ECS 上的 Python 版本提醒
+
+如果你部署到 `Alibaba Cloud Linux 3.2104 LTS 64位`，建议使用 `Python 3.11` 而不是系统默认的 `python3`。原因是系统默认 `python3` 通常仍是 `Python 3.6`，而本项目代码使用了 `Python 3.9+` 的 `str.removeprefix()`，可参考 [server.py:810](/Users/wangyuwei/Desktop/CodexProj/ArxivEveryday/server.py#L810) 和 [server.py:830](/Users/wangyuwei/Desktop/CodexProj/ArxivEveryday/server.py#L830)。
+
 示例：
 
 ```bash
