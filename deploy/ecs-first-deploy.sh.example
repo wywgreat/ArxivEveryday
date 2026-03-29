@@ -26,6 +26,9 @@ if [[ ! -d .venv ]]; then
   sudo python3.11 -m venv .venv
 fi
 
+sudo .venv/bin/pip install --upgrade pip
+sudo .venv/bin/pip install -r requirements.txt
+
 if [[ ! -f deploy/arxiv-everyday.env ]]; then
   sudo cp deploy/arxiv-everyday.env.example deploy/arxiv-everyday.env
   echo "Created deploy/arxiv-everyday.env. Edit ADMIN_PASSWORD before public launch."

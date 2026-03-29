@@ -1,4 +1,4 @@
-const TRACKED_TOPICS = [
+const TOPIC_OPTIONS = [
   "大语言模型",
   "智能体",
   "推理",
@@ -13,35 +13,41 @@ const TRACKED_TOPICS = [
 ];
 
 const state = {
-  activeTab: "all",
+  activeView: "all",
   papers: [],
   favorites: [],
-  source: "",
+  selectedTopics: new Set(TOPIC_OPTIONS),
   loading: false,
-  windowLabel: "最近 7 天",
+  source: "",
+  dateLabel: "未设置",
+  aiSummaryEnabled: false,
+  summaryLoadingIds: new Set(),
 };
 
 const refs = {
-  windowForm: document.querySelector("#windowForm"),
-  windowSelect: document.querySelector("#windowSelect"),
-  startDateField: document.querySelector("#startDateField"),
-  endDateField: document.querySelector("#endDateField"),
+  filterForm: document.querySelector("#filterForm"),
   startDate: document.querySelector("#startDate"),
   endDate: document.querySelector("#endDate"),
   refreshButton: document.querySelector("#refreshButton"),
+  resetFiltersButton: document.querySelector("#resetFiltersButton"),
+  selectAllTopicsButton: document.querySelector("#selectAllTopicsButton"),
+  topicSelector: document.querySelector("#topicSelector"),
+  selectedTopicCount: document.querySelector("#selectedTopicCount"),
+  favoritesShortcut: document.querySelector("#favoritesShortcut"),
   allTab: document.querySelector("#allTab"),
   favoriteTab: document.querySelector("#favoriteTab"),
   paperGrid: document.querySelector("#paperGrid"),
   emptyState: document.querySelector("#emptyState"),
   loadingState: document.querySelector("#loadingState"),
-  topicCloud: document.querySelector("#topicCloud"),
   banner: document.querySelector("#banner"),
   paperCount: document.querySelector("#paperCount"),
   favoriteCount: document.querySelector("#favoriteCount"),
+  favoriteCountHero: document.querySelector("#favoriteCountHero"),
   sourceLabel: document.querySelector("#sourceLabel"),
-  windowLabel: document.querySelector("#windowLabel"),
+  dateLabel: document.querySelector("#dateLabel"),
   listHint: document.querySelector("#listHint"),
   userBadge: document.querySelector("#userBadge"),
+  summaryCapability: document.querySelector("#summaryCapability"),
   logoutButton: document.querySelector("#logoutButton"),
 };
 
@@ -65,29 +71,26 @@ function formatDate(value) {
   }
 }
 
-function setDefaultCustomDates() {
-  const today = new Date();
-  const end = today.toISOString().slice(0, 10);
-  const start = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000)
+function toHtmlWithBreaks(value = "") {
+  return escapeHtml(value).replaceAll("\n", "<br />");
+}
+
+function setDefaultDates() {
+  const now = new Date();
+  const end = now.toISOString().slice(0, 10);
+  const start = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
   refs.startDate.value = refs.startDate.value || start;
   refs.endDate.value = refs.endDate.value || end;
 }
 
-function toggleCustomFields() {
-  const isCustom = refs.windowSelect.value === "custom";
-  refs.startDateField.classList.toggle("hidden", !isCustom);
-  refs.endDateField.classList.toggle("hidden", !isCustom);
-  if (isCustom) {
-    setDefaultCustomDates();
-  }
-}
-
-function renderTopicCloud() {
-  refs.topicCloud.innerHTML = TRACKED_TOPICS.map(
-    (topic) => `<span class="topic-pill">${escapeHtml(topic)}</span>`
-  ).join("");
+function renderTopicSelector() {
+  refs.topicSelector.innerHTML = TOPIC_OPTIONS.map((topic) => {
+    const active = state.selectedTopics.has(topic);
+    return `<button type="button" class="topic-filter ${active ? "active" : ""}" data-topic="${escapeHtml(topic)}">${escapeHtml(topic)}</button>`;
+  }).join("");
+  refs.selectedTopicCount.textContent = `${state.selectedTopics.size} / ${TOPIC_OPTIONS.length}`;
 }
 
 function setBanner(message, tone = "info") {
@@ -107,17 +110,20 @@ function setLoading(loading) {
   refs.loadingState.classList.toggle("hidden", !loading);
 }
 
-function syncFavoriteFlags() {
-  const favoriteIds = new Set(state.favorites.map((paper) => paper.id));
-  state.papers = state.papers.map((paper) => ({
-    ...paper,
-    isFavorite: favoriteIds.has(paper.id),
-  }));
+function syncPaperState() {
+  const favoriteMap = new Map(state.favorites.map((paper) => [paper.id, paper]));
+  state.papers = state.papers.map((paper) => {
+    const favorite = favoriteMap.get(paper.id);
+    return favorite
+      ? { ...paper, ...favorite, isFavorite: true }
+      : { ...paper, isFavorite: false };
+  });
 }
 
 function updateStats() {
   refs.paperCount.textContent = String(state.papers.length);
   refs.favoriteCount.textContent = String(state.favorites.length);
+  refs.favoriteCountHero.textContent = String(state.favorites.length);
   refs.sourceLabel.textContent =
     state.source === "live"
       ? "实时 arXiv"
@@ -126,66 +132,99 @@ function updateStats() {
         : state.source === "demo"
           ? "演示数据"
           : "未加载";
-  refs.windowLabel.textContent = state.windowLabel;
+  refs.dateLabel.textContent = state.dateLabel;
+  refs.summaryCapability.textContent = state.aiSummaryEnabled
+    ? "已检测到标准百炼配置，可以生成并缓存 AI Summary。"
+    : "未检测到标准百炼配置；AI Summary 按钮会提示如何启用。";
 }
 
 function currentList() {
-  return state.activeTab === "favorites" ? state.favorites : state.papers;
+  return state.activeView === "favorites" ? state.favorites : state.papers;
+}
+
+function summarySourceLabel(source) {
+  if (source === "pdf") {
+    return "基于全文";
+  }
+  if (source === "abstract") {
+    return "基于题目与摘要";
+  }
+  return "已缓存";
+}
+
+function downloadUrl(paper) {
+  const params = new URLSearchParams({
+    paperId: paper.id,
+    pdfUrl: paper.pdfUrl || "",
+  });
+  return `/api/download?${params.toString()}`;
 }
 
 function buildPaperCard(paper, index) {
   const favoriteLabel = paper.isFavorite ? "已收藏" : "收藏";
   const favoriteClass = paper.isFavorite ? "favorite active" : "favorite";
+  const summaryLoading = state.summaryLoadingIds.has(paper.id);
+  const summaryLabel = summaryLoading
+    ? "生成中..."
+    : paper.aiSummary
+      ? "刷新 AI Summary"
+      : "AI Summary";
   const topics = (paper.matchedTopics || [])
     .map((topic) => `<span class="mini-pill">${escapeHtml(topic)}</span>`)
     .join("");
-  const keywords = (paper.matchedKeywords || [])
-    .slice(0, 4)
+  const keywords = (paper.keywords || [])
+    .slice(0, 8)
     .map((keyword) => `<span class="keyword-pill">${escapeHtml(keyword)}</span>`)
     .join("");
   const authors = (paper.authors || []).length
     ? escapeHtml(paper.authors.join(", "))
     : "未知作者";
+  const summaryBlock = paper.aiSummary
+    ? `
+      <section class="summary-panel">
+        <div class="summary-head">
+          <span>AI Summary</span>
+          <span>${escapeHtml(summarySourceLabel(paper.aiSummarySource))}</span>
+        </div>
+        <div class="summary-body">${toHtmlWithBreaks(paper.aiSummary)}</div>
+        <div class="summary-foot">${paper.aiSummaryUpdatedAt ? `更新于 ${escapeHtml(formatDate(paper.aiSummaryUpdatedAt))}` : ""}</div>
+      </section>
+    `
+    : "";
 
   return `
-    <article class="paper-card" style="animation-delay: ${index * 55}ms">
-      <div class="paper-card-top">
-        <div class="pill-row">${topics || '<span class="mini-pill">主题匹配中</span>'}</div>
+    <article class="paper-card" style="animation-delay:${index * 45}ms">
+      <div class="paper-top">
+        <div>
+          <div class="paper-meta">
+            <span>${escapeHtml(paper.primaryCategory || "未分类")}</span>
+            <span>${escapeHtml(formatDate(paper.published))}</span>
+          </div>
+          <h3 class="paper-title">${escapeHtml(paper.title || "无标题")}</h3>
+          <p class="paper-title-zh">${escapeHtml(paper.titleZh || "翻译暂不可用")}</p>
+        </div>
         <button class="${favoriteClass}" type="button" data-action="favorite" data-id="${encodeURIComponent(paper.id)}">${favoriteLabel}</button>
       </div>
 
-      <div class="paper-meta">
-        <span>${escapeHtml(paper.primaryCategory || "未分类")}</span>
-        <span>${escapeHtml(formatDate(paper.published))}</span>
+      <div class="chip-row">
+        ${topics}
+        ${keywords}
       </div>
 
-      <div class="keyword-row">${keywords}</div>
+      <div class="abstract-pair">
+        <p class="abstract-text">${escapeHtml(paper.summary || "暂无摘要")}</p>
+        <div class="abstract-divider"></div>
+        <p class="abstract-text translated">${escapeHtml(paper.summaryZh || "翻译暂不可用")}</p>
+      </div>
 
-      <section class="copy-block">
-        <span class="copy-label">英文标题</span>
-        <h4>${escapeHtml(paper.title || "无标题")}</h4>
-      </section>
-
-      <section class="copy-block translated">
-        <span class="copy-label">中文标题</span>
-        <p>${escapeHtml(paper.titleZh || "翻译暂不可用")}</p>
-      </section>
-
-      <section class="copy-block">
-        <span class="copy-label">英文摘要</span>
-        <p>${escapeHtml(paper.summary || "暂无摘要")}</p>
-      </section>
-
-      <section class="copy-block translated">
-        <span class="copy-label">中文摘要</span>
-        <p>${escapeHtml(paper.summaryZh || "翻译暂不可用")}</p>
-      </section>
+      ${summaryBlock}
 
       <div class="paper-footer">
         <p class="author-line">作者：${authors}</p>
-        <div class="paper-links">
-          <a href="${escapeHtml(paper.paperUrl || "#")}" target="_blank" rel="noreferrer">查看 arXiv</a>
-          <a href="${escapeHtml(paper.pdfUrl || "#")}" target="_blank" rel="noreferrer">打开 PDF</a>
+        <div class="action-row">
+          <button class="secondary-button compact" type="button" data-action="summary" data-id="${encodeURIComponent(paper.id)}" ${summaryLoading ? "disabled" : ""}>${summaryLabel}</button>
+          <a class="ghost-link" href="${escapeHtml(downloadUrl(paper))}">下载 PDF</a>
+          <a class="ghost-link" href="${escapeHtml(paper.paperUrl || "#")}" target="_blank" rel="noreferrer">查看 arXiv</a>
         </div>
       </div>
     </article>
@@ -194,13 +233,12 @@ function buildPaperCard(paper, index) {
 
 function renderList() {
   const list = currentList();
-
-  refs.allTab.classList.toggle("active", state.activeTab === "all");
-  refs.favoriteTab.classList.toggle("active", state.activeTab === "favorites");
+  refs.allTab.classList.toggle("active", state.activeView === "all");
+  refs.favoriteTab.classList.toggle("active", state.activeView === "favorites");
   refs.listHint.textContent =
-    state.activeTab === "favorites"
-      ? "收藏会持久化到本地 SQLite，刷新页面后仍可保留。"
-      : "点击卡片右上角即可收藏 / 取消收藏。";
+    state.activeView === "favorites"
+      ? "这里保留的是你历史收藏的论文；下载 PDF 与 AI Summary 都可以直接从这里触发。"
+      : "每次更新都会结合日期范围与选中的主题进行过滤。";
 
   if (state.loading) {
     refs.paperGrid.innerHTML = "";
@@ -241,38 +279,53 @@ async function loadSession() {
     return;
   }
   refs.userBadge.textContent = session.username || "admin123";
+  state.aiSummaryEnabled = Boolean(session.aiSummaryEnabled);
+}
+
+function upsertPaperInCollections(updatedPaper) {
+  state.papers = state.papers.map((paper) =>
+    paper.id === updatedPaper.id ? { ...paper, ...updatedPaper } : paper
+  );
+
+  const index = state.favorites.findIndex((paper) => paper.id === updatedPaper.id);
+  if (index >= 0) {
+    state.favorites[index] = { ...state.favorites[index], ...updatedPaper, isFavorite: true };
+  } else if (updatedPaper.isFavorite) {
+    state.favorites = [{ ...updatedPaper, isFavorite: true }, ...state.favorites];
+  }
 }
 
 async function loadFavorites() {
   const payload = await apiFetch("/api/favorites");
   state.favorites = payload.favorites || [];
-  syncFavoriteFlags();
+  syncPaperState();
   updateStats();
   renderList();
 }
 
-function buildWindowQuery() {
-  const params = new URLSearchParams();
-  const selected = refs.windowSelect.value;
-  params.set("window", selected);
-  if (selected === "custom") {
-    params.set("startDate", refs.startDate.value);
-    params.set("endDate", refs.endDate.value);
-  }
+function buildQuery() {
+  const params = new URLSearchParams({
+    startDate: refs.startDate.value,
+    endDate: refs.endDate.value,
+  });
+  [...state.selectedTopics].forEach((topic) => params.append("topic", topic));
   return params.toString();
 }
 
 async function loadPapers() {
+  if (!state.selectedTopics.size) {
+    setBanner("至少选择一个关注主题后再更新。", "warning");
+    return;
+  }
+
   setLoading(true);
   setBanner("");
-
   try {
-    const payload = await apiFetch(`/api/papers?${buildWindowQuery()}`);
+    const payload = await apiFetch(`/api/papers?${buildQuery()}`);
     state.papers = payload.papers || [];
     state.source = payload.source || "";
-    state.windowLabel = payload.window?.label || "最近 7 天";
-    syncFavoriteFlags();
-
+    state.dateLabel = payload.filters?.label || "未设置";
+    syncPaperState();
     const tone =
       payload.source === "live"
         ? "success"
@@ -290,10 +343,9 @@ async function loadPapers() {
 }
 
 async function toggleFavorite(paperId) {
-  const decodedId = decodeURIComponent(paperId);
   const paper =
-    state.papers.find((item) => item.id === decodedId) ||
-    state.favorites.find((item) => item.id === decodedId);
+    state.papers.find((item) => item.id === paperId) ||
+    state.favorites.find((item) => item.id === paperId);
 
   if (!paper) {
     return;
@@ -301,26 +353,63 @@ async function toggleFavorite(paperId) {
 
   try {
     if (paper.isFavorite) {
-      await apiFetch(`/api/favorites/${encodeURIComponent(decodedId)}`, {
-        method: "DELETE",
-      });
-      state.favorites = state.favorites.filter((item) => item.id !== decodedId);
+      await apiFetch(`/api/favorites/${encodeURIComponent(paperId)}`, { method: "DELETE" });
+      state.favorites = state.favorites.filter((item) => item.id !== paperId);
+      state.papers = state.papers.map((item) =>
+        item.id === paperId ? { ...item, isFavorite: false } : item
+      );
+      setBanner("已取消收藏。", "info");
     } else {
       const payload = await apiFetch("/api/favorites", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(paper),
       });
-      state.favorites = [payload.paper, ...state.favorites.filter((item) => item.id !== decodedId)];
+      upsertPaperInCollections({ ...payload.paper, isFavorite: true });
+      setBanner(payload.message || "已加入收藏。", "success");
     }
-
-    syncFavoriteFlags();
+    syncPaperState();
     updateStats();
     renderList();
   } catch (error) {
     setBanner(error.message || "收藏操作失败，请稍后重试。", "error");
+  }
+}
+
+async function generateSummary(paperId) {
+  const paper =
+    state.papers.find((item) => item.id === paperId) ||
+    state.favorites.find((item) => item.id === paperId);
+
+  if (!paper) {
+    return;
+  }
+
+  state.summaryLoadingIds.add(paperId);
+  renderList();
+
+  try {
+    const payload = await apiFetch("/api/summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        paper,
+        favorite: paper.isFavorite,
+        force: Boolean(paper.aiSummary),
+      }),
+    });
+    upsertPaperInCollections({
+      ...payload.paper,
+      isFavorite: paper.isFavorite || payload.paper.isFavorite,
+    });
+    syncPaperState();
+    setBanner(payload.message || "AI Summary 已更新。", "success");
+  } catch (error) {
+    setBanner(error.message || "AI Summary 生成失败，请稍后重试。", "error");
+  } finally {
+    state.summaryLoadingIds.delete(paperId);
+    updateStats();
+    renderList();
   }
 }
 
@@ -332,12 +421,48 @@ async function logout() {
   }
 }
 
-function handleGridClick(event) {
-  const button = event.target.closest("[data-action='favorite']");
+function activateView(view) {
+  state.activeView = view;
+  renderList();
+  document.querySelector(".list-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function toggleTopic(topic) {
+  if (state.selectedTopics.has(topic)) {
+    state.selectedTopics.delete(topic);
+  } else {
+    state.selectedTopics.add(topic);
+  }
+  renderTopicSelector();
+}
+
+function resetFilters() {
+  setDefaultDates();
+  state.selectedTopics = new Set(TOPIC_OPTIONS);
+  renderTopicSelector();
+  setBanner("筛选条件已重置。", "info");
+}
+
+function handleTopicClick(event) {
+  const button = event.target.closest("[data-topic]");
   if (!button) {
     return;
   }
-  toggleFavorite(button.dataset.id);
+  toggleTopic(button.dataset.topic);
+}
+
+function handleGridClick(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) {
+    return;
+  }
+  const paperId = decodeURIComponent(button.dataset.id);
+  const action = button.dataset.action;
+  if (action === "favorite") {
+    toggleFavorite(paperId);
+  } else if (action === "summary") {
+    generateSummary(paperId);
+  }
 }
 
 async function handleRefresh(event) {
@@ -345,24 +470,25 @@ async function handleRefresh(event) {
   await loadPapers();
 }
 
-function activateTab(tab) {
-  state.activeTab = tab;
-  renderList();
-}
-
 async function bootstrap() {
-  renderTopicCloud();
-  toggleCustomFields();
+  setDefaultDates();
+  renderTopicSelector();
   await loadSession();
   await loadFavorites();
   await loadPapers();
 }
 
-refs.windowSelect?.addEventListener("change", toggleCustomFields);
-refs.windowForm?.addEventListener("submit", handleRefresh);
-refs.allTab?.addEventListener("click", () => activateTab("all"));
-refs.favoriteTab?.addEventListener("click", () => activateTab("favorites"));
+refs.filterForm?.addEventListener("submit", handleRefresh);
+refs.resetFiltersButton?.addEventListener("click", resetFilters);
+refs.selectAllTopicsButton?.addEventListener("click", () => {
+  state.selectedTopics = new Set(TOPIC_OPTIONS);
+  renderTopicSelector();
+});
+refs.topicSelector?.addEventListener("click", handleTopicClick);
 refs.paperGrid?.addEventListener("click", handleGridClick);
+refs.allTab?.addEventListener("click", () => activateView("all"));
+refs.favoriteTab?.addEventListener("click", () => activateView("favorites"));
+refs.favoritesShortcut?.addEventListener("click", () => activateView("favorites"));
 refs.logoutButton?.addEventListener("click", logout);
 
 bootstrap();

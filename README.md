@@ -3,15 +3,19 @@
 一个本地即可运行的 arXiv 论文看板，支持：
 
 - 登录页拦截
-- 按时间窗口抓取相关主题论文
-- 论文标题与摘要的中英文展示
-- 收藏 / 取消收藏
+- 按日期范围与主题抓取相关论文
+- 标题与摘要的中英文展示
+- 关键词提取、收藏 / 取消收藏、PDF 下载
+- AI Summary 按钮与收藏时自动总结
 - SQLite 持久化收藏与翻译缓存
 - 外网受限时自动回退缓存或演示数据，方便本地联调
 
 ## 本地启动
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 python3 server.py
 ```
 
@@ -33,10 +37,19 @@ python3 server.py
 - `ARXIV_MAX_MATCHED`
 - `ARXIV_PAGE_SIZE`
 - `ARXIV_FETCH_CAP`
+- `DASHSCOPE_API_KEY`
+- `DASHSCOPE_MODEL`
+- `DASHSCOPE_BASE_URL`
 
 ## ECS 上的 Python 版本提醒
 
-如果你部署到 `Alibaba Cloud Linux 3.2104 LTS 64位`，建议使用 `Python 3.11` 而不是系统默认的 `python3`。原因是系统默认 `python3` 通常仍是 `Python 3.6`，而本项目代码使用了 `Python 3.9+` 的 `str.removeprefix()`，可参考 [server.py:810](/Users/wangyuwei/Desktop/CodexProj/ArxivEveryday/server.py#L810) 和 [server.py:830](/Users/wangyuwei/Desktop/CodexProj/ArxivEveryday/server.py#L830)。
+如果你部署到 `Alibaba Cloud Linux 3.2104 LTS 64位`，建议使用 `Python 3.11` 而不是系统默认的 `python3`。原因是系统默认 `python3` 通常仍是 `Python 3.6`，而本项目代码使用了 `Python 3.9+` 的 `str.removeprefix()`，可参考 [server.py:891](/Users/wangyuwei/Desktop/CodexProj/ArxivEveryday/server.py#L891) 和 [server.py:911](/Users/wangyuwei/Desktop/CodexProj/ArxivEveryday/server.py#L911)。
+
+## AI Summary 说明
+
+- `AI Summary` 走的是标准百炼兼容接口，推荐通过 `DASHSCOPE_API_KEY` 配置。
+- 出于安全与合规考虑，不建议把密钥直接写进代码仓库。
+- 如果没有配置 API Key，页面中的 `AI Summary` 按钮会给出提示，但不影响其他功能使用。
 
 示例：
 
